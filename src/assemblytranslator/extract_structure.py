@@ -106,7 +106,8 @@ def get_mem_operand_structure(m_operand):
                 raise ParseError("register not found: \"{0}\"".format(part))
 
         mem_structure = {
-            "values": mem_operand_parse_results
+            "values": mem_operand_parse_results,
+            "type": Operands.MEM
         }
 
         for mode in ["byte", "word", "dword", "qword"]:
