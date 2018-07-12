@@ -41,6 +41,11 @@ def get_operand_structure(operand):
     else:
         operand_without_space = operand.replace(" ", "")
 
+        is_operand_negative = False
+        if operand_without_space.startswith("-"):
+            is_operand_negative = True
+            operand_without_space = operand_without_space[1:]
+
         pattern_1 = re.compile("[0-9]+$")
         pattern_2 = re.compile("0x([0-9a-f]+)$")
 
@@ -48,7 +53,8 @@ def get_operand_structure(operand):
                 or re.match(pattern_2, operand_without_space):
             return {
                 "type": Operands.DATA,
-                "value": operand_without_space
+                "value": operand_without_space,
+                "is_negative": is_operand_negative
             }
         else:
             try:

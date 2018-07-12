@@ -9,7 +9,5 @@ def translate(instruction, processor_mode=ProcessorMode.MODE_32):
 
     instruction_structure = extract_structure(normalized_instruction)
 
-    print(convert(instruction_structure, processor_mode))
-
-    return normalized_instruction
+    return convert(instruction_structure, processor_mode)
 

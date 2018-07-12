@@ -1,9 +1,9 @@
 from .instructions import Commands
 from .parse_error import ParseError
 from .operands import Operands, how_many_bits, MemoryMode, RegisterMode, reg_op_32_bit, reg_op_64_bit, \
-    rm_part_16_registers, rm_part_32_registers, Registers, scale_map, rm_part_32_registers_base,\
-    rm_part_32_64_registers, rm_part_64_64_registers, has_rex_b, rm_part_32_64_registers_base,\
-    rm_part_64_64_registers_base
+    rm_part_16_registers, rm_part_32_registers, Registers, scale_map, rm_part_32_registers_base, \
+    rm_part_32_64_registers, rm_part_64_64_registers, has_rex_b, rm_part_32_64_registers_base, \
+    rm_part_64_64_registers_base, has_rex_r
 from .processor_mode import ProcessorMode
 
 
@@ -21,15 +21,40 @@ def mov(structure, processor_mode):
     except KeyError:
         raise ParseError("MOV command has two operands")
     if first_operand["type"] == Operands.REG and second_operand["type"] == Operands.REG:
-        return predict_operand_prefix(first_operand, processor_mode) +\
-               "1000100" +\
-               predict_w(second_operand, processor_mode) +\
-               "11" +\
-               predict_reg_op(second_operand["register"], processor_mode) +\
+        return predict_operand_prefix(first_operand, processor_mode) + \
+               "1000100" + \
+               predict_w(second_operand, processor_mode) + \
+               "11" + \
+               predict_reg_op(second_operand["register"], processor_mode) + \
                predict_reg_op(first_operand["register"], processor_mode)
     elif first_operand["type"] == Operands.REG and second_operand["type"] == Operands.MEM:
-        print(analyse_memory_operand(second_operand, processor_mode))
-        return "asghar"
+        mem_analyse = analyse_memory_operand(second_operand, processor_mode)
+        return mem_analyse["address_prefix"] + predict_operand_prefix(first_operand, processor_mode) + \
+               predict_rex(processor_mode, mem_analyse, first_operand["register"], first_operand) + "1000101" + \
+               predict_w(first_operand, processor_mode) + \
+               mem_analyse["mode"] + \
+               predict_reg_op(first_operand["register"], processor_mode) + \
+               mem_analyse["rm_part"] + \
+               mem_analyse["scale_part"] + \
+               mem_analyse["index_part"] + \
+               mem_analyse["base_part"] + \
+               mem_analyse["displacement"]
+    elif first_operand["type"] == Operands.REG and second_operand["type"] == Operands.DATA:
+        if processor_mode == ProcessorMode.MODE_64 and how_many_bits(first_operand["register"]) == RegisterMode.MODE_64:
+            return predict_operand_prefix(first_operand, processor_mode) +\
+                   predict_rex(processor_mode, None, first_operand["register"], first_operand) +\
+                   "1100011" +\
+                   predict_w(first_operand, processor_mode) +\
+                   "11000" +\
+                   predict_reg_op(first_operand["register"], processor_mode) +\
+                   predict_data(second_operand, first_operand, processor_mode)
+        else:
+            return predict_rex(processor_mode, None, first_operand["register"], first_operand) +\
+                   predict_operand_prefix(first_operand, processor_mode) +\
+                   "1011" +\
+                   predict_w(first_operand, processor_mode) +\
+                   predict_reg_op(first_operand["register"], processor_mode) +\
+                   predict_data(second_operand, first_operand, processor_mode)
 
 
 def predict_w(evidence, processor_mode):
@@ -193,7 +218,7 @@ def analyse_memory_operand(mem_operand, processor_mode):
                     scale_index = 2
 
     has_address_prefix = False
-    rm_part = ""
+    rm_part: str = ""
     has_sib = False
     scale_part = ""
     base_part = ""
@@ -251,7 +276,6 @@ def analyse_memory_operand(mem_operand, processor_mode):
                     has_address_prefix = True
                     try:
                         rm_part = rm_part_16_registers[(reg_1, reg_2)]
-                        print(rm_part)
                     except KeyError:
                         raise ParseError("invalid base/index")
                 else:
@@ -406,8 +430,155 @@ def analyse_memory_operand(mem_operand, processor_mode):
         "index_part": index_part,
         "base_part": base_part,
         "has_displacement": True if displacement is not None else False,
-        "displacement": displacement,
+        "displacement": displacement if displacement is not None else "",
         "has_rex": has_rex,
         "rex_x": rex_x,
         "rex_b": rex_b
     }
+
+
+def predict_rex(processor_mode, mem_analysis=None, register=None, evidence=None):
+    if processor_mode != ProcessorMode.MODE_64:
+        return ""
+
+    has_rex_mem = False
+    prefix_x = "0"
+    prefix_b = "0"
+    if mem_analysis is not None:
+        has_rex_mem = mem_analysis["has_rex"]
+        prefix_x = mem_analysis["rex_x"]
+        prefix_b = mem_analysis["rex_b"]
+
+    has_rex_r_flag = False
+    prefix_r = "0"
+    if register is not None:
+        has_rex_r_flag = register in has_rex_r
+        if has_rex_r_flag:
+            prefix_r = "1"
+
+    prefix_w = "0"
+    has_rex_w = False
+    if evidence is not None:
+        if evidence["type"] == Operands.MEM:
+            if "memory_mode" in evidence.keys():
+                has_rex_w = evidence["memory_mode"] == MemoryMode.QWORD
+                if has_rex_w:
+                    prefix_w = "1"
+            else:
+                raise ParseError("operand size unspecified")
+        else:
+            has_rex_w = how_many_bits(evidence["register"]) == RegisterMode.MODE_64
+            if has_rex_w:
+                prefix_w = "1"
+
+    if has_rex_mem or has_rex_r_flag or has_rex_w:
+        return "0100" + prefix_w + prefix_r + prefix_x + prefix_b
+    else:
+        return ""
+
+
+def predict_data(data, evidence, processor_mode):
+    if data["value"].startswith("0x"):
+        value = int(data["value"], 16)
+    else:
+        value = int(data["value"], 10)
+
+    binary_value = bin(value)[2:]
+
+    if binary_value.startswith("1"):
+        binary_value = "0" + binary_value
+
+    true_mem_op = binary_value
+    if data["is_negative"]:
+        toggled_mem_op = ""
+        for char in binary_value:
+            if char == "0":
+                toggled_mem_op += "1"
+            else:
+                toggled_mem_op += "0"
+
+        true_mem_op = ""
+        reversed_toggled_mem_op = toggled_mem_op[::-1]
+        for index, char in enumerate(reversed_toggled_mem_op):
+            if char == "1":
+                true_mem_op += "0"
+            else:
+                true_mem_op += "1"
+                true_mem_op += reversed_toggled_mem_op[index + 1:]
+                break
+
+        true_mem_op = true_mem_op[::-1]
+
+    if evidence["type"] == Operands.REG:
+        operand_mode = how_many_bits(evidence["register"])
+    else:
+        try:
+            memory_mode = evidence["memory_mode"]
+        except KeyError:
+            raise ParseError("operand size unspecified")
+
+        if memory_mode == MemoryMode.BYTE:
+            operand_mode = RegisterMode.MODE_8
+        elif memory_mode == MemoryMode.WORD:
+            operand_mode = RegisterMode.MODE_16
+        elif memory_mode == MemoryMode.DWORD:
+            operand_mode = RegisterMode.MODE_32
+        else:
+            operand_mode = RegisterMode.MODE_64
+
+    padding_bit = "1" if data["is_negative"] else "0"
+    true_data = ""
+
+    if processor_mode == ProcessorMode.MODE_32:
+        if len(true_mem_op) > 32:
+            raise ParseError("invalid data")
+
+        if operand_mode == RegisterMode.MODE_8:
+            if len(true_mem_op) > 8:
+                raise ParseError("invalid data")
+
+            true_data = padding_bit * (8 - len(true_mem_op)) + true_mem_op
+        elif operand_mode == RegisterMode.MODE_16:
+            if len(true_mem_op) > 16:
+                raise ParseError("invalid data")
+
+            true_data = padding_bit * (16 - len(true_mem_op)) + true_mem_op
+        else:
+            if len(true_mem_op) > 32:
+                raise ParseError("invalid data")
+
+            true_data = padding_bit * (32 - len(true_mem_op)) + true_mem_op
+    else:
+        if len(true_mem_op) > 64:
+            raise ParseError("invalid data")
+
+        if operand_mode == RegisterMode.MODE_8:
+            if len(true_mem_op) > 8:
+                raise ParseError("invalid data")
+
+            true_data = padding_bit * (8 - len(true_mem_op)) + true_mem_op
+        elif operand_mode == RegisterMode.MODE_16:
+            if len(true_mem_op) > 16:
+                raise ParseError("invalid data")
+
+            true_data = padding_bit * (16 - len(true_mem_op)) + true_mem_op
+        elif operand_mode == RegisterMode.MODE_32:
+            if len(true_mem_op) > 32:
+                raise ParseError("invalid data")
+
+            true_data = padding_bit * (32 - len(true_mem_op)) + true_mem_op
+        else:
+            if len(true_mem_op) > 64:
+                raise ParseError("invalid data")
+
+            if len(true_mem_op) <= 32:
+                true_data = padding_bit * (32 - len(true_mem_op)) + true_mem_op
+            else:
+                true_data = padding_bit * (64 - len(true_mem_op)) + true_mem_op
+
+    final_true_data = ""
+    for i in range(int(len(true_data) / 8) + 1):
+        final_true_data = true_data[i * 8: i * 8 + 8] + final_true_data
+
+    return final_true_data
+
