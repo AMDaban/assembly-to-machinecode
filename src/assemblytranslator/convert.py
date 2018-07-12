@@ -10,6 +10,8 @@ from .processor_mode import ProcessorMode
 def convert(structure, processor_mode):
     if structure["command"] == Commands.MOV:
         return mov(structure, processor_mode)
+    elif structure["command"] == Commands.ADD:
+        return add(structure, processor_mode)
     else:
         raise ParseError("command not found: \"{0}\"".format(structure["command"]))
 
@@ -78,6 +80,82 @@ def mov(structure, processor_mode):
                predict_operand_prefix(first_operand, processor_mode) + \
                predict_rex(processor_mode, mem_analyse, None, first_operand) + \
                "1100011" + \
+               predict_w(first_operand, processor_mode) + \
+               mem_analyse["mode"] + \
+               "000" + \
+               mem_analyse["rm_part"] + \
+               mem_analyse["scale_part"] + \
+               mem_analyse["index_part"] + \
+               mem_analyse["base_part"] + \
+               mem_analyse["displacement"] +\
+               predict_data(second_operand, first_operand, processor_mode)
+    else:
+        raise ParseError("incorrect use of MOV instruction")
+
+
+def add(structure, processor_mode):
+    try:
+        first_operand = structure["first_operand"]
+        second_operand = structure["second_operand"]
+    except KeyError:
+        raise ParseError("MOV command has two operands")
+    if first_operand["type"] == Operands.REG and second_operand["type"] == Operands.REG:
+        return predict_operand_prefix(first_operand, processor_mode) +\
+               predict_rex(
+                   processor_mode,
+                   None,
+                   second_operand["register"],
+                   second_operand,
+                   first_operand["register"]
+               ) + \
+               "0000000" + \
+               predict_w(second_operand, processor_mode) + \
+               "11" + \
+               predict_reg_op(second_operand["register"], processor_mode) + \
+               predict_reg_op(first_operand["register"], processor_mode)
+    elif first_operand["type"] == Operands.REG and second_operand["type"] == Operands.MEM:
+        mem_analyse = analyse_memory_operand(second_operand, processor_mode)
+        return mem_analyse["address_prefix"] + predict_operand_prefix(first_operand, processor_mode) + \
+               predict_rex(processor_mode, mem_analyse, first_operand["register"], first_operand) + "0000001" + \
+               predict_w(first_operand, processor_mode) + \
+               mem_analyse["mode"] + \
+               predict_reg_op(first_operand["register"], processor_mode) + \
+               mem_analyse["rm_part"] + \
+               mem_analyse["scale_part"] + \
+               mem_analyse["index_part"] + \
+               mem_analyse["base_part"] + \
+               mem_analyse["displacement"]
+    elif first_operand["type"] == Operands.REG and second_operand["type"] == Operands.DATA:
+        return predict_operand_prefix(first_operand, processor_mode) + \
+               predict_rex(processor_mode, None, first_operand["register"], first_operand) + \
+               "1000001" + \
+               predict_w(first_operand, processor_mode) + \
+               "11000" + \
+               predict_reg_op(first_operand["register"], processor_mode) + \
+               predict_data(second_operand, first_operand, processor_mode)
+    elif first_operand["type"] == Operands.MEM and second_operand["type"] == Operands.REG:
+        mem_analyse = analyse_memory_operand(first_operand, processor_mode)
+
+        return mem_analyse["address_prefix"] + \
+               predict_operand_prefix(second_operand, processor_mode) + \
+               predict_rex(processor_mode, mem_analyse, second_operand["register"], second_operand) + \
+               "0000000" + \
+               predict_w(second_operand, processor_mode) + \
+               mem_analyse["mode"] + \
+               predict_reg_op(second_operand["register"], processor_mode) + \
+               mem_analyse["rm_part"] + \
+               mem_analyse["scale_part"] + \
+               mem_analyse["index_part"] + \
+               mem_analyse["base_part"] + \
+               mem_analyse["displacement"]
+
+    elif first_operand["type"] == Operands.MEM and second_operand["type"] == Operands.DATA:
+        mem_analyse = analyse_memory_operand(first_operand, processor_mode)
+
+        return mem_analyse["address_prefix"] + \
+               predict_operand_prefix(first_operand, processor_mode) + \
+               predict_rex(processor_mode, mem_analyse, None, first_operand) + \
+               "1000000" + \
                predict_w(first_operand, processor_mode) + \
                mem_analyse["mode"] + \
                "000" + \
@@ -471,7 +549,7 @@ def analyse_memory_operand(mem_operand, processor_mode):
     }
 
 
-def predict_rex(processor_mode, mem_analysis=None, register=None, evidence=None):
+def predict_rex(processor_mode, mem_analysis=None, register=None, evidence=None, mem_alternative=None):
     if processor_mode != ProcessorMode.MODE_64:
         return ""
 
@@ -482,6 +560,10 @@ def predict_rex(processor_mode, mem_analysis=None, register=None, evidence=None)
         has_rex_mem = mem_analysis["has_rex"]
         prefix_x = mem_analysis["rex_x"]
         prefix_b = mem_analysis["rex_b"]
+    elif mem_alternative is not None:
+        if mem_alternative in has_rex_r:
+            has_rex_mem = True
+            prefix_b = "1"
 
     has_rex_r_flag = False
     prefix_r = "0"

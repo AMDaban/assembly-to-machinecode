@@ -24,4 +24,4 @@ def pretty_print(machine_code):
 #     print("\t=>", machine_code)
 
 
-pretty_print(translate("mov word ptr [eax * 8 + esp + 123], 11114", ProcessorMode.MODE_32))
+pretty_print(translate("add byte ptr[eax*4+ecx+1234345], -123", ProcessorMode.MODE_64))
