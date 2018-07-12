@@ -298,3 +298,42 @@ reg_op_64_bit = {
     Registers.R15W: "111",
     Registers.R15B: "111",
 }
+
+rm_part_16_registers = {
+    (Registers.BX, Registers.SI): "000",
+    (Registers.BX, Registers.DI): "001",
+    (Registers.BP, Registers.SI): "010",
+    (Registers.BP, Registers.DI): "011",
+    (Registers.SI, ""): "100",
+    (Registers.DI, ""): "101",
+    (Registers.BP, ""): "110",
+    (Registers.BX, ""): "111",
+}
+
+rm_part_32_registers = {
+    Registers.EAX: "000",
+    Registers.ECX: "001",
+    Registers.EDX: "010",
+    Registers.EBX: "011",
+    Registers.EBP: "101",
+    Registers.ESI: "110",
+    Registers.EDI: "111",
+}
+
+rm_part_32_registers_base = {
+    Registers.EAX: "000",
+    Registers.ECX: "001",
+    Registers.EDX: "010",
+    Registers.EBX: "011",
+    Registers.ESP: "100",
+    Registers.EBP: "101",
+    Registers.ESI: "110",
+    Registers.EDI: "111",
+}
+
+scale_map = {
+    1: "00",
+    2: "01",
+    4: "10",
+    8: "11"
+}

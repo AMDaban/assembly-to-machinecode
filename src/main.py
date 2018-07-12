@@ -12,4 +12,4 @@ from src.assemblytranslator import translate, ProcessorMode
 #
 #     print("\t=>", machine_code)
 
-print(translate("mov eax, ebx", ProcessorMode.MODE_64))
+print(translate("mov eax, [ebx+0x123]", ProcessorMode.MODE_32))
