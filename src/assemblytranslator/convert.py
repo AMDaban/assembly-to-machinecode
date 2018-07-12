@@ -1,7 +1,9 @@
 from .instructions import Commands
 from .parse_error import ParseError
 from .operands import Operands, how_many_bits, MemoryMode, RegisterMode, reg_op_32_bit, reg_op_64_bit, \
-    rm_part_16_registers, rm_part_32_registers, Registers, scale_map, rm_part_32_registers_base
+    rm_part_16_registers, rm_part_32_registers, Registers, scale_map, rm_part_32_registers_base,\
+    rm_part_32_64_registers, rm_part_64_64_registers, has_rex_b, rm_part_32_64_registers_base,\
+    rm_part_64_64_registers_base
 from .processor_mode import ProcessorMode
 
 
@@ -196,10 +198,20 @@ def analyse_memory_operand(mem_operand, processor_mode):
     scale_part = ""
     base_part = ""
     index_part = ""
+    has_rex = False
+    rex_x = "0"
+    rex_b = "0"
 
     if reg_1 is None and reg_2 is None:
         mode = "00"
-        rm_part = "101"
+        if processor_mode == ProcessorMode.MODE_32:
+            rm_part = "101"
+        else:
+            rm_part = "100"
+            has_sib = True
+            scale_part = "00"
+            base_part = "101"
+            index_part = "100"
     else:
         if scale not in [0, 1, 2, 4, 8]:
             raise ParseError("scale is not allowed: \"{0}\"".format(scale))
@@ -213,17 +225,24 @@ def analyse_memory_operand(mem_operand, processor_mode):
                     raise ParseError("register not allowed: \"{0}\"".format(reg_2))
 
             if reg_2 is None:
-                if how_many_bits(reg_1) == RegisterMode.MODE_16:
-                    has_address_prefix = True
-                    try:
-                        rm_part = rm_part_16_registers[(reg_1, "")]
-                    except KeyError:
-                        raise ParseError("invalid base/index")
+                if reg_1 == Registers.ESP:
+                    rm_part = "100"
+                    has_sib = True
+                    scale_part = "00"
+                    index_part = "100"
+                    base_part = "100"
                 else:
-                    try:
-                        rm_part = rm_part_32_registers[reg_1]
-                    except KeyError:
-                        raise ParseError("invalid base/index")
+                    if how_many_bits(reg_1) == RegisterMode.MODE_16:
+                        has_address_prefix = True
+                        try:
+                            rm_part = rm_part_16_registers[(reg_1, "")]
+                        except KeyError:
+                            raise ParseError("invalid base/index")
+                    else:
+                        try:
+                            rm_part = rm_part_32_registers[reg_1]
+                        except KeyError:
+                            raise ParseError("invalid base/index")
             else:
                 if how_many_bits(reg_1) == RegisterMode.MODE_16:
                     if how_many_bits(reg_2) != RegisterMode.MODE_16:
@@ -261,7 +280,122 @@ def analyse_memory_operand(mem_operand, processor_mode):
                     except KeyError:
                         raise ParseError("invalid index or base register")
         else:
-            pass
+            if reg_1 is not None:
+                if how_many_bits(reg_1) in [RegisterMode.MODE_8, RegisterMode.MODE_16]:
+                    raise ParseError("register not allowed: \"{0}\"".format(reg_1))
+            if reg_2 is not None:
+                if how_many_bits(reg_2) in [RegisterMode.MODE_8, RegisterMode.MODE_16]:
+                    raise ParseError("register not allowed: \"{0}\"".format(reg_2))
+
+            if reg_2 is None:
+                if reg_1 == Registers.RSP:
+                    rm_part = "100"
+                    has_sib = True
+                    scale_part = "00"
+                    index_part = "100"
+                    base_part = "100"
+                elif reg_1 == Registers.ESP:
+                    has_address_prefix = True
+                    rm_part = "100"
+                    has_sib = True
+                    scale_part = "00"
+                    index_part = "100"
+                    base_part = "100"
+                else:
+                    if how_many_bits(reg_1) == RegisterMode.MODE_32:
+                        has_address_prefix = True
+                        try:
+                            rm_part = rm_part_32_64_registers[reg_1]
+                            if reg_1 in has_rex_b:
+                                has_rex = True
+                                rex_b = "1"
+                        except KeyError:
+                            raise ParseError("invalid base/index")
+                    else:
+                        try:
+                            rm_part = rm_part_64_64_registers[reg_1]
+                            if reg_1 in has_rex_b:
+                                has_rex = True
+                                rex_b = "1"
+                        except KeyError:
+                            raise ParseError("invalid base/index")
+            else:
+                if how_many_bits(reg_1) == RegisterMode.MODE_32:
+                    if how_many_bits(reg_2) == RegisterMode.MODE_32:
+                        has_address_prefix = True
+                        rm_part = "100"
+                        has_sib = True
+
+                        if scale == 0:
+                            scale = 1
+                            if reg_1 != Registers.ESP and reg_1 != Registers.RSP:
+                                scale_index = 1
+                            else:
+                                scale_index = 2
+
+                        scale_part = scale_map[scale]
+
+                        try:
+                            if scale_index == 1:
+                                index_part = rm_part_32_64_registers[reg_1]
+                                if reg_1 in has_rex_b:
+                                    has_rex = True
+                                    rex_x = "1"
+                                base_part = rm_part_32_64_registers_base[reg_2]
+                                if reg_2 in has_rex_b:
+                                    has_rex = True
+                                    rex_b = "1"
+                            else:
+                                index_part = rm_part_32_64_registers[reg_2]
+                                if reg_2 in has_rex_b:
+                                    has_rex = True
+                                    rex_x = "1"
+                                base_part = rm_part_32_64_registers_base[reg_1]
+                                if reg_1 in has_rex_b:
+                                    has_rex = True
+                                    rex_b = "1"
+                        except KeyError:
+                            raise ParseError("invalid index or base register")
+
+                    else:
+                        raise ParseError("invalid base/index")
+                else:
+                    if how_many_bits(reg_2) == RegisterMode.MODE_32:
+                        raise ParseError("invalid base/index")
+                    else:
+                        rm_part = "100"
+                        has_sib = True
+
+                        if scale == 0:
+                            scale = 1
+                            if reg_1 != Registers.ESP and reg_1 != Registers.RSP:
+                                scale_index = 1
+                            else:
+                                scale_index = 2
+
+                        scale_part = scale_map[scale]
+
+                        try:
+                            if scale_index == 1:
+                                index_part = rm_part_64_64_registers[reg_1]
+                                if reg_1 in has_rex_b:
+                                    has_rex = True
+                                    rex_x = "1"
+                                base_part = rm_part_64_64_registers_base[reg_2]
+                                if reg_2 in has_rex_b:
+                                    has_rex = True
+                                    rex_b = "1"
+                            else:
+                                index_part = rm_part_64_64_registers[reg_2]
+                                if reg_2 in has_rex_b:
+                                    has_rex = True
+                                    rex_x = "1"
+                                base_part = rm_part_64_64_registers_base[reg_1]
+                                if reg_1 in has_rex_b:
+                                    has_rex = True
+                                    rex_b = "1"
+                        except KeyError:
+                            raise ParseError("invalid base/index")
 
     return {
         "address_prefix": "01100111" if has_address_prefix else "",
@@ -272,5 +406,8 @@ def analyse_memory_operand(mem_operand, processor_mode):
         "index_part": index_part,
         "base_part": base_part,
         "has_displacement": True if displacement is not None else False,
-        "displacement": displacement
+        "displacement": displacement,
+        "has_rex": has_rex,
+        "rex_x": rex_x,
+        "rex_b": rex_b
     }
