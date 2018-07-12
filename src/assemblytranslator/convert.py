@@ -41,20 +41,54 @@ def mov(structure, processor_mode):
                mem_analyse["displacement"]
     elif first_operand["type"] == Operands.REG and second_operand["type"] == Operands.DATA:
         if processor_mode == ProcessorMode.MODE_64 and how_many_bits(first_operand["register"]) == RegisterMode.MODE_64:
-            return predict_operand_prefix(first_operand, processor_mode) +\
-                   predict_rex(processor_mode, None, first_operand["register"], first_operand) +\
-                   "1100011" +\
-                   predict_w(first_operand, processor_mode) +\
-                   "11000" +\
-                   predict_reg_op(first_operand["register"], processor_mode) +\
+            return predict_operand_prefix(first_operand, processor_mode) + \
+                   predict_rex(processor_mode, None, first_operand["register"], first_operand) + \
+                   "1100011" + \
+                   predict_w(first_operand, processor_mode) + \
+                   "11000" + \
+                   predict_reg_op(first_operand["register"], processor_mode) + \
                    predict_data(second_operand, first_operand, processor_mode)
         else:
-            return predict_rex(processor_mode, None, first_operand["register"], first_operand) +\
-                   predict_operand_prefix(first_operand, processor_mode) +\
-                   "1011" +\
-                   predict_w(first_operand, processor_mode) +\
-                   predict_reg_op(first_operand["register"], processor_mode) +\
+            return predict_rex(processor_mode, None, first_operand["register"], first_operand) + \
+                   predict_operand_prefix(first_operand, processor_mode) + \
+                   "1011" + \
+                   predict_w(first_operand, processor_mode) + \
+                   predict_reg_op(first_operand["register"], processor_mode) + \
                    predict_data(second_operand, first_operand, processor_mode)
+    elif first_operand["type"] == Operands.MEM and second_operand["type"] == Operands.REG:
+        mem_analyse = analyse_memory_operand(first_operand, processor_mode)
+
+        return mem_analyse["address_prefix"] + \
+               predict_operand_prefix(second_operand, processor_mode) + \
+               predict_rex(processor_mode, mem_analyse, second_operand["register"], second_operand) + \
+               "1000100" + \
+               predict_w(second_operand, processor_mode) + \
+               mem_analyse["mode"] + \
+               predict_reg_op(second_operand["register"], processor_mode) + \
+               mem_analyse["rm_part"] + \
+               mem_analyse["scale_part"] + \
+               mem_analyse["index_part"] + \
+               mem_analyse["base_part"] + \
+               mem_analyse["displacement"]
+
+    elif first_operand["type"] == Operands.MEM and second_operand["type"] == Operands.DATA:
+        mem_analyse = analyse_memory_operand(first_operand, processor_mode)
+
+        return mem_analyse["address_prefix"] + \
+               predict_operand_prefix(first_operand, processor_mode) + \
+               predict_rex(processor_mode, mem_analyse, None, first_operand) + \
+               "1100011" + \
+               predict_w(first_operand, processor_mode) + \
+               mem_analyse["mode"] + \
+               "000" + \
+               mem_analyse["rm_part"] + \
+               mem_analyse["scale_part"] + \
+               mem_analyse["index_part"] + \
+               mem_analyse["base_part"] + \
+               mem_analyse["displacement"] +\
+               predict_data(second_operand, first_operand, processor_mode)
+    else:
+        raise ParseError("incorrect use of MOV instruction")
 
 
 def predict_w(evidence, processor_mode):
@@ -581,4 +615,3 @@ def predict_data(data, evidence, processor_mode):
         final_true_data = true_data[i * 8: i * 8 + 8] + final_true_data
 
     return final_true_data
-
