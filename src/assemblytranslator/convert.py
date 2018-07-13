@@ -36,6 +36,13 @@ def mov(structure, processor_mode):
         raise ParseError("MOV command has two operands")
     if first_operand["type"] == Operands.REG and second_operand["type"] == Operands.REG:
         return predict_operand_prefix(first_operand, processor_mode) + \
+               predict_rex(
+                   processor_mode,
+                   None,
+                   second_operand["register"],
+                   second_operand,
+                   first_operand["register"]
+               ) + \
                "1000100" + \
                predict_w(second_operand, processor_mode) + \
                "11" + \
