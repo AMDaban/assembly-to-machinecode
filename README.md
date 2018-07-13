@@ -1,3 +1,3 @@
 # assembly-to-machine-code
 
-simple assembly code translator for mov, add, or, neg, div instructions
+simple assembly code translator for MOV, ADD, AND, CALL, POP instructions
