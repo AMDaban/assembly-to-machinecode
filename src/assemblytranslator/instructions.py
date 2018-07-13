@@ -6,4 +6,6 @@ class Commands(Enum):
     ADD = "add"
     AND = "and"
     CALL = "call"
-    OR = "or"
+    POP = "pop"
+    POPA = "popa"
+    POPF = "popf"

@@ -16,6 +16,14 @@ def convert(structure, processor_mode):
         return and_(structure, processor_mode)
     elif structure["command"] == Commands.CALL:
         return call(structure, processor_mode)
+    elif structure["command"] == Commands.POP:
+        return pop(structure, processor_mode)
+    elif structure["command"] == Commands.POPA:
+        if processor_mode == ProcessorMode.MODE_64:
+            raise ParseError("`popa' is not supported in 64-bit mode")
+        return "01100001"
+    elif structure["command"] == Commands.POPF:
+        return "10011101"
     else:
         raise ParseError("command not found: \"{0}\"".format(structure["command"]))
 
@@ -245,14 +253,14 @@ def and_(structure, processor_mode):
                mem_analyse["displacement"] +\
                predict_data(second_operand, first_operand, processor_mode)
     else:
-        raise ParseError("incorrect use of MOV instruction")
+        raise ParseError("incorrect use of AND instruction")
 
 
 def call(structure, processor_mode):
     try:
         first_operand = structure["first_operand"]
     except KeyError:
-        raise ParseError("AND command has two operands")
+        raise ParseError("CALL command has one operands")
 
     if first_operand["type"] == Operands.DATA:
         return "11101000" +\
@@ -294,6 +302,54 @@ def call(structure, processor_mode):
                mem_analyse["displacement"]
     else:
         raise ParseError("incorrect use of CALL instruction")
+
+
+def pop(structure, processor_mode):
+    try:
+        first_operand = structure["first_operand"]
+    except KeyError:
+        raise ParseError("POP command has one operands")
+
+    if first_operand["type"] == Operands.REG:
+        if how_many_bits(first_operand["register"]) == RegisterMode.MODE_8:
+            raise ParseError("8 bit register not allowed")
+        if processor_mode == ProcessorMode.MODE_64 and how_many_bits(first_operand["register"]) == RegisterMode.MODE_32:
+            raise ParseError("32 bit register not allowed in 64bit mode")
+
+        return predict_operand_prefix(first_operand, processor_mode) +\
+               predict_rex(
+                   processor_mode,
+                   None,
+                   None,
+                   None,
+                   first_operand["register"]
+               ) + \
+               "01011" + predict_reg_op(first_operand["register"], processor_mode)
+    elif first_operand["type"] == Operands.MEM:
+        if processor_mode == ProcessorMode.MODE_32:
+            first_operand.update({
+                "memory_mode": MemoryMode.DWORD
+            })
+        else:
+            first_operand.update({
+                "memory_mode": MemoryMode.QWORD
+            })
+
+        mem_analyse = analyse_memory_operand(first_operand, processor_mode)
+
+        return mem_analyse["address_prefix"] + \
+               predict_operand_prefix(first_operand, processor_mode) + \
+               predict_rex(processor_mode, mem_analyse, None, None) + \
+               "10001111" + \
+               mem_analyse["mode"] + \
+               "000" + \
+               mem_analyse["rm_part"] + \
+               mem_analyse["scale_part"] + \
+               mem_analyse["index_part"] + \
+               mem_analyse["base_part"] + \
+               mem_analyse["displacement"]
+    else:
+        raise ParseError("incorrect use of POP instruction")
 
 
 def predict_w(evidence, processor_mode):

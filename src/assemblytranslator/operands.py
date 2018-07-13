@@ -87,6 +87,7 @@ class Registers(Enum):
     R15D = "r15d"
     R15 = "r15"
 
+
 regs_8_bit = {
     Registers.AL,
     Registers.AH,

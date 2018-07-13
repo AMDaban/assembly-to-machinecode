@@ -24,4 +24,4 @@ def pretty_print(machine_code):
 #     print("\t=>", machine_code)
 
 
-pretty_print(translate("call [bx+ si]", ProcessorMode.MODE_32))
+pretty_print(translate("pop [eax*4 + esi + 0x1234234]", ProcessorMode.MODE_64))

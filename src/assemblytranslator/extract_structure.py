@@ -7,6 +7,11 @@ import re
 def extract_structure(instruction):
     extracted_command = instruction.split(" ")[0]
 
+    if extracted_command == "popa" or extracted_command == "popf":
+        return ({
+            "command": get_command(extracted_command)
+        })
+
     instruction_without_command = instruction.replace(extracted_command, "")
 
     first_operand = instruction_without_command.split(",")[0]
