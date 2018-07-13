@@ -4,6 +4,6 @@ from enum import Enum
 class Commands(Enum):
     MOV = "mov"
     ADD = "add"
-    NEG = "neg"
+    AND = "and"
     DIV = "DIV"
     OR = "or"
