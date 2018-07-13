@@ -24,4 +24,4 @@ def pretty_print(machine_code):
 #     print("\t=>", machine_code)
 
 
-pretty_print(translate("and byte [eax*4 + ecx + 1234], 123", ProcessorMode.MODE_64))
+pretty_print(translate("call [bx+ si]", ProcessorMode.MODE_32))

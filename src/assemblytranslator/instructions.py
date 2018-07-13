@@ -5,5 +5,5 @@ class Commands(Enum):
     MOV = "mov"
     ADD = "add"
     AND = "and"
-    DIV = "DIV"
+    CALL = "call"
     OR = "or"

@@ -14,6 +14,8 @@ def convert(structure, processor_mode):
         return add(structure, processor_mode)
     elif structure["command"] == Commands.AND:
         return and_(structure, processor_mode)
+    elif structure["command"] == Commands.CALL:
+        return call(structure, processor_mode)
     else:
         raise ParseError("command not found: \"{0}\"".format(structure["command"]))
 
@@ -244,6 +246,54 @@ def and_(structure, processor_mode):
                predict_data(second_operand, first_operand, processor_mode)
     else:
         raise ParseError("incorrect use of MOV instruction")
+
+
+def call(structure, processor_mode):
+    try:
+        first_operand = structure["first_operand"]
+    except KeyError:
+        raise ParseError("AND command has two operands")
+
+    if first_operand["type"] == Operands.DATA:
+        return "11101000" +\
+               predict_data(first_operand, {"type": Operands.REG, "register": Registers.EDI}, processor_mode)
+    elif first_operand["type"] == Operands.REG:
+        if how_many_bits(first_operand["register"]) == RegisterMode.MODE_8:
+            raise ParseError("8 bit address not allowed")
+        return predict_operand_prefix(first_operand, processor_mode) +\
+               predict_rex(
+                   processor_mode,
+                   None,
+                   None,
+                   None,
+                   first_operand["register"]
+               ) + \
+               "1111111111010" + predict_reg_op(first_operand["register"], processor_mode)
+    elif first_operand["type"] == Operands.MEM:
+        if processor_mode == ProcessorMode.MODE_32:
+            first_operand.update({
+                "memory_mode": MemoryMode.DWORD
+            })
+        else:
+            first_operand.update({
+                "memory_mode": MemoryMode.QWORD
+            })
+
+        mem_analyse = analyse_memory_operand(first_operand, processor_mode)
+
+        return mem_analyse["address_prefix"] + \
+               predict_operand_prefix(first_operand, processor_mode) + \
+               predict_rex(processor_mode, mem_analyse, None, None) + \
+               "11111111" + \
+               mem_analyse["mode"] + \
+               "010" + \
+               mem_analyse["rm_part"] + \
+               mem_analyse["scale_part"] + \
+               mem_analyse["index_part"] + \
+               mem_analyse["base_part"] + \
+               mem_analyse["displacement"]
+    else:
+        raise ParseError("incorrect use of CALL instruction")
 
 
 def predict_w(evidence, processor_mode):
